@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>My thing</title>
+        <link rel="stylesheet" href="style.css">
+    </head>
+    <body>
+        <div class="container">
+            <div class="instructions">
+                <b>Instructions</b><br><br>
+                There are seven differently shaped tetriminos that fall into a rectangular Matrix.
+                As tetriminos fall, a player may rotate, move, or drop them into their final resting place.
+                They may also hold a tetrimino for later use or use a tetromino stored in the hold slot.
+                If a row or more of cells is completely filled with Blocks, then the line or lines are cleared from the Matrix.
+            </div>
+            <div class="game">
+                <div class="holdSlot">
+                    <p>Hold</p>
+                    <canvas id="holdSlot"></canvas>
+                </div>
+                <div class="matrix">
+                    <p id="msg"><br></p>
+                    <canvas id="matrix"></canvas>
+                    <p id="timeElapsed">00:00</p>
+                    <p id="pieceCount">0 pieces placed</p>
+                    <p id="lineClearCount">0 lines cleared</p>
+                </div>
+                <div class="nextQueue">
+                    <p>Next</p>
+                    <canvas id="nextQueue"></canvas>
+                </div>
+            </div>
+            <div class="controls">
+                <b>Controls</b>:<br><br>
+                Move piece left:<br>Left arrow key<br><br>
+                Move piece right:<br>Right arrow key<br><br>
+                Hard drop (instant drop):<br>Spacebar<br><br>
+                Soft drop (quick drop):<br>Down arrow key<br><br>
+                Rotate piece clockwise:<br>X or Up arrow key<br><br>
+                Rotate piece counter-clockwise:<br>Z or Ctrl<br><br>
+                Rotate piece 180 degrees:<br>A<br><br>
+                Hold piece:<br>C or Shift<br><br>
+                Reset:<br>F5
+            </div>
+        </div>
+        <script src="index.js"></script>
+    </body>
+</html>
