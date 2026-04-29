@@ -15,6 +15,7 @@ const MATRIX_HEIGHT = 20;
 
 matrix.width = BLOCK_SIZE * MATRIX_WIDTH;
 matrix.height = BLOCK_SIZE * MATRIX_HEIGHT;
+// 5x4 area for each piece (including padding)
 nextQueue.width = BLOCK_SIZE * 5;
 nextQueue.height = BLOCK_SIZE * 16;
 holdSlot.width = BLOCK_SIZE * 5;
@@ -65,6 +66,7 @@ class Tetromino {
         [TetrominoType.Z]: COLORS.RED
     };
 
+    // Offsets from center of each block
     static SHAPES = {
         [TetrominoType.O]: {
             [TetrominoFacing.North]: [[0, 0], [1, 0], [1, 1], [0, 1]],
@@ -110,6 +112,7 @@ class Tetromino {
         }
     };
 
+    // Rotation to facing table
     static ROTATIONS = {
         [TetrominoRotation.Clockwise]: {
             [TetrominoFacing.North]: TetrominoFacing.East,
@@ -131,6 +134,9 @@ class Tetromino {
         }
     };
 
+    // Piece offsets to try to fix collisions
+    // Property I is for I piece, x is for every other piece
+    // Read as KICKS.x[TetrominoRotation.Clockwise][TetrominoFacing.North] = kick for non-I-piece rotating clockwise from north (to east)
     static KICKS = {
         x: {
             [TetrominoRotation.Clockwise]: {
@@ -196,10 +202,11 @@ class Tetromino {
         return this.blocks.some(block => {
             let x = this.position[0] + block[0];
             let y = this.position[1] + block[1];
-            return x < 0 || x >= MATRIX_WIDTH || y < 0 || Game.field[y]?.[x];
+            return x < 0 || x >= MATRIX_WIDTH || y < 0 || Game.field[y]?.[x]; // If out of bounds or block in field is null
         });
     }
 
+    // Same as isColliding() but with an added direction
     willCollide(direction) {
         return this.blocks.some(block => {
             let x = this.position[0] + direction[0] + block[0];
@@ -214,6 +221,7 @@ class Tetromino {
     }
 
     move(direction) {
+        // Temporary variables to restore if move fails
         let x = this.position[0];
         let y = this.position[1];
         this.moveUnchecked(direction);
@@ -234,12 +242,14 @@ class Tetromino {
         let y = this.position[1];
         this.rotateUnchecked(rotation)
         let kicks = this.type === TetrominoType.I ? Tetromino.KICKS.I : Tetromino.KICKS.x;
+        // Check to see if any kicks resolve the collision
         for (const kick of kicks[rotation][facing]) {
             this.moveUnchecked(kick);
             if (!this.isColliding())
                 return 0;
             this.position = [x, y];
         }
+        // Reset if no kick worked
         this.facing = facing;
         this.position = [x, y];
         return -1;
@@ -265,9 +275,9 @@ const InputType = {
 
 class Input {
     static HANDLING = {
-        AUTO_REPEAT_RATE: 33,
-        DELAYED_AUTO_SHIFT: 167,
-        SOFT_DROP_FACTOR: 20
+        AUTO_REPEAT_RATE: 33, // Speed at which pieces move when holding down a movement key in milliseconds/move
+        DELAYED_AUTO_SHIFT: 167, // Time between initial keypress and start of automatic repeat movement in milliseconds
+        SOFT_DROP_FACTOR: 20 // Factor which soft drops change gravity speed
     };
 
     static keybinds = {
@@ -282,8 +292,10 @@ class Input {
         [InputCommand.Pause]: ['Escape', 'F1']
     };
 
+    // Turn {command: [...keys], ...} into {key: [...commands], ...}
     static get reversedKeybinds() {
         let reversedKeybinds = {};
+        // Reflect.ownKeys() to iterate over Symbol objects
         for (const command of Reflect.ownKeys(this.keybinds))
             for (const key of this.keybinds[command])
                 reversedKeybinds[key] = command;
@@ -291,18 +303,24 @@ class Input {
     }
 
     static actions = {
+        // DAS timeout initiated, waiting for auto repeat movement to activate
         DASLeftWait: false,
         DASRightWait: false,
+        // Left/right movement keys pressed and auto repeat movement activated
         DASLeft: false,
         DASRight: false,
+        // Soft drop key pressed
         SoftDrop: false
     };
 
+    // Timeout to activate auto repeat movement
     static DASLeftTimeout = null;
     static DASRightTimeout = null;
-    static ARRLeftInterval = null;
-    static ARRRightInterval = null;
+    // Auto repeat movement interval
+    static DASLeftInterval = null;
+    static DASRightInterval = null;
 
+    // Attempt to create Input object from KeyboardEvent
     static from(event, type) {
         let command = this.reversedKeybinds[event.code];
         if (command !== undefined)
@@ -319,6 +337,7 @@ class Input {
 }
 
 onkeydown = event => {
+    // Ignore built-in keypress delay functionality
     if (event.repeat || Game.finished)
         return;
     let input = Input.from(event, InputType.KeyDown);
@@ -326,8 +345,9 @@ onkeydown = event => {
         return;
     switch (input.command) {
         case (InputCommand.MoveLeft):
-            clearInterval(Input.ARRRightInterval);
-            Input.ARRRightInterval = null;
+            // Initiate DAS and clear opposite DAS
+            clearInterval(Input.DASRightInterval);
+            Input.DASRightInterval = null;
             Input.actions.DASLeftWait = true;
 
             if (Game.tetrominoInPlay.move([-1, 0]) === 0)
@@ -337,18 +357,21 @@ onkeydown = event => {
                 Input.actions.DASLeft = true;
                 Input.actions.DASLeftWait = false;
 
+                // If opposite DAS is initiated but not activated (e.g. left pressed, then right pressed before left DAS timeout activates)
                 if (Input.actions.DASRightWait)
                     return;
 
-                Input.ARRLeftInterval = setInterval(_ => {
+                // Initiate auto repeat movement
+                Input.DASLeftInterval = setInterval(_ => {
                     if (Game.tetrominoInPlay.move([-1, 0]) === 0)
                         Game.onMove();
                 }, Input.HANDLING.AUTO_REPEAT_RATE);
             }, Input.HANDLING.DELAYED_AUTO_SHIFT);
             break;
         case (InputCommand.MoveRight):
-            clearInterval(Input.ARRLeftInterval);
-            Input.ARRLeftInterval = null;
+            // Same as left case but everything mirrored
+            clearInterval(Input.DASLeftInterval);
+            Input.DASLeftInterval = null;
             Input.actions.DASRightWait = true;
 
             if (Game.tetrominoInPlay.move([1, 0]) === 0)
@@ -361,7 +384,7 @@ onkeydown = event => {
                 if (Input.actions.DASLeftWait)
                     return;
 
-                Input.ARRRightInterval = setInterval(_ => {
+                Input.DASRightInterval = setInterval(_ => {
                     if (Game.tetrominoInPlay.move([1, 0]) === 0)
                         Game.onMove();
                 }, Input.HANDLING.AUTO_REPEAT_RATE)
@@ -372,7 +395,9 @@ onkeydown = event => {
             break;
         case (InputCommand.SoftDrop):
             Input.actions.SoftDrop = true;
+            // If space to fall
             if (!Game.tetrominoInPlay.willCollide([0, -1])) {
+                // Switch from fall to soft drop
                 clearTimeout(Game.fallTimeout);
                 Game.fallTimeout = null;
                 Game.softDrop();
@@ -391,10 +416,11 @@ onkeydown = event => {
                 Game.onMove();
             break;
         case (InputCommand.Hold):
+            // If already used hold
             if (Game.holdLocked)
                 break;
             Game.holdLocked = true;
-            hold = Game.hold;
+            hold = Game.hold; // Temporary variable
             Game.hold = Game.tetrominoInPlay.type;
             Game.generate(hold);
             break;
@@ -411,31 +437,34 @@ onkeyup = event => {
         return;
     switch (input.command) {
         case (InputCommand.MoveLeft):
+            // Clear any waiting DAS timeout and auto repeat movement
             clearTimeout(Input.DASLeftTimeout);
-            clearInterval(Input.ARRLeftInterval);
+            clearInterval(Input.DASLeftInterval);
             Input.DASLeftTimeout = null;
-            Input.ARRLeftInterval = null;
+            Input.DASLeftInterval = null;
 
             Input.actions.DASLeft = false;
             Input.actions.DASLeftWait = false;
 
-            if (Input.actions.DASRight && Input.ARRRightInterval === null)
-                Input.ARRRightInterval = setInterval(_ => {
+            // If opposite DAS input is held and not already in auto repeat movement
+            if (Input.actions.DASRight && Input.DASRightInterval === null)
+                Input.DASRightInterval = setInterval(_ => {
                     if (Game.tetrominoInPlay.move([1, 0]) === 0)
                         Game.onMove();
                 }, Input.HANDLING.AUTO_REPEAT_RATE);
             break;
         case (InputCommand.MoveRight):
+            // Same as left case but everything mirrored
             clearTimeout(Input.DASRightTimeout);
-            clearInterval(Input.ARRRightInterval);
+            clearInterval(Input.DASRightInterval);
             Input.DASRightTimeout = null;
-            Input.ARRRightInterval = null;
+            Input.DASRightInterval = null;
 
             Input.actions.DASRight = false;
             Input.actions.DASRightWait = false;
 
-            if (Input.actions.DASLeft && Input.ARRLeftInterval === null)
-                Input.ARRLeftInterval = setInterval(_ => {
+            if (Input.actions.DASLeft && Input.DASLeftInterval === null)
+                Input.DASLeftInterval = setInterval(_ => {
                     if (Game.tetrominoInPlay.move([-1, 0]) === 0)
                         Game.onMove();
                 }, Input.HANDLING.AUTO_REPEAT_RATE);
@@ -446,7 +475,9 @@ onkeyup = event => {
             Input.actions.SoftDrop = false;
             clearTimeout(Game.softDropTimeout);
             Game.softDropTimeout = null;
+            // If space to fall
             if (!Game.tetrominoInPlay.willCollide([0, -1])) {
+                // Switch from soft drop to fall
                 Game.fall(true);
             }
             break;
@@ -467,12 +498,14 @@ const Renderer = {
     drawGrid() {
         matrixCtx.lineWidth = 1;
         matrixCtx.strokeStyle = 'gray';
+        // Draw horizontal lines
         for (let row = 1; row < MATRIX_HEIGHT; row++) {
             matrixCtx.beginPath();
             matrixCtx.moveTo(0, row * BLOCK_SIZE);
             matrixCtx.lineTo(matrix.width, row * BLOCK_SIZE);
             matrixCtx.stroke();
         }
+        // Draw vertical lines
         for (let col = 1; col < MATRIX_WIDTH; col++) {
             matrixCtx.beginPath();
             matrixCtx.moveTo(col * BLOCK_SIZE, 0);
@@ -484,13 +517,16 @@ const Renderer = {
     drawTetrominoHelper(ctx, type, position, facing, color) {
         tetromino = new Tetromino(type, facing);
         ctx.beginPath();
+        // Allow color override (for shadow piece)
         ctx.fillStyle = color ?? tetromino.color;
+        // Draw each block
         for (const block of tetromino.blocks)
             ctx.rect(block[0] * BLOCK_SIZE + position[0], -block[1] * BLOCK_SIZE + position[1], BLOCK_SIZE, BLOCK_SIZE);
         ctx.fill();
     },
 
     drawTetromino(tetromino) {
+        // Turn tetromino coordinates (origin bottom left, 1 unit = 1 block) to canvas coordinates (origin top left, 1 unit = 1 pixel)
         position = [tetromino.position[0] * BLOCK_SIZE, (MATRIX_HEIGHT - tetromino.position[1] - 1) * BLOCK_SIZE];
         this.drawTetrominoHelper(matrixCtx, tetromino.type, position, tetromino.facing, tetromino === Game.shadow ? COLORS.GRAY : undefined);
     },
@@ -509,6 +545,7 @@ const Renderer = {
 
     drawNextQueue() {
         for (const [i, type] of Game.nextQueue.entries()) {
+            // Center I and O pieces
             position = [
                 type === TetrominoType.I || type === TetrominoType.O ? 1.5 * BLOCK_SIZE : 2 * BLOCK_SIZE,
                 type === TetrominoType.I ? (3 * i + 1.5) * BLOCK_SIZE : (3 * i + 2) * BLOCK_SIZE
@@ -543,6 +580,7 @@ const Renderer = {
 const Game = {
     FRESH_BAG: [TetrominoType.O, TetrominoType.I, TetrominoType.T, TetrominoType.L, TetrominoType.J, TetrominoType.S, TetrominoType.Z],
     get nextTetromino() {
+        // Draw from bag and refill bag when empty
         let tetromino = this.bag.splice(Math.floor(Math.random() * this.bag.length), 1)[0];
         if (this.bag.length === 0)
             this.bag = [...this.FRESH_BAG];
@@ -571,6 +609,7 @@ const Game = {
     locking: undefined,
     lockInputCount: undefined,
 
+    // Set position of piece shadow
     setShadow() {
         tetromino = this.tetrominoInPlay;
         this.shadow = new Tetromino(tetromino.type, tetromino.facing, [...tetromino.position]);
@@ -604,12 +643,15 @@ const Game = {
         this.clearTimers();
     },
 
+    // Called on move left/right and rotate
     onMove() {
         this.setShadow();
+        // Continue if in lock phase
         if (!this.locking)
             return;
         this.lockInputCount++;
         clearTimeout(this.lockTimeout);
+        // If touching surface
         if (this.tetrominoInPlay.willCollide([0, -1])) {
             if (this.lockInputCount > 15)
                 this.lockDown();
@@ -617,9 +659,10 @@ const Game = {
                 this.lock();
             return;
         }
+        this.lockTimeout = null;
+        // Else if not already falling
         if (this.fallTimeout !== null || this.softDropTimeout !== null)
             return;
-        this.lockTimeout = null;
         if (Input.actions.SoftDrop) {
             this.softDrop(true);
         } else {
@@ -632,19 +675,21 @@ const Game = {
         this.gravityInterval = setInterval(_ => this.gravity += 0.1, 5000);
         this.timeInterval = setInterval(_ => {
             this.timeElapsed++;
-            timeElapsed.innerHTML = new Date(this.timeElapsed * 1000).toISOString().substring(14, 19)
+            timeElapsed.innerHTML = new Date(this.timeElapsed * 1000).toISOString().substring(14, 19); // Time counter in mm:ss
         }, 1000);
     },
 
     generate(type) {
         this.clearTimers();
 
+        // Allow piece override not from next queue (for swap hold piece)
         if (type)
             this.tetrominoInPlay = new Tetromino(type);
         else {
             this.tetrominoInPlay = new Tetromino(this.nextQueue.shift(), TetrominoFacing.North);
             this.nextQueue.push(this.nextTetromino);
         }
+        // If generated piece is colliding with piece in field
         if (this.tetrominoInPlay.isColliding()) {
             this.finish();
             return;
@@ -659,6 +704,8 @@ const Game = {
     },
 
     fall(wait) {
+        clearTimeout(this.softDropTimeout); // Resolve race conditions that activate multiple timeouts
+        // If want to execute with initial delay
         if (wait) {
             this.fallTimeout = setTimeout(this.fall.bind(this), 1000 / this.gravity);
             return;
@@ -666,6 +713,7 @@ const Game = {
 
         this.tetrominoInPlay.move([0, -1]);
 
+        // If touching surface
         if (this.tetrominoInPlay.willCollide([0, -1])) {
             if (this.lockInputCount > 15)
                 this.lockDown();
@@ -679,6 +727,8 @@ const Game = {
     },
 
     softDrop(wait) {
+        clearTimeout(this.softDropTimeout); // Resolve race conditions that activate multiple timeouts
+        // If want to execute with inital delay
         if (wait) {
             this.softDropTimeout = setTimeout(this.softDrop.bind(this), 1000 / this.gravity / Input.HANDLING.SOFT_DROP_FACTOR);
             return;
@@ -686,6 +736,7 @@ const Game = {
 
         this.tetrominoInPlay.move([0, -1]);
 
+        // If touching surface
         if (this.tetrominoInPlay.willCollide([0, -1])) {
             if (this.lockInputCount > 15)
                 this.lockDown();
@@ -699,16 +750,20 @@ const Game = {
     },
 
     lock() {
+        clearTimeout(this.lockTimeout); // Resolve race conditions that activate multiple timeouts
         this.lockTimeout = setTimeout(this.lockDown.bind(this), 500);
     },
 
     lockDown() {
+        // Set tetromino position to shadow position
         this.tetrominoInPlay.position = [...this.shadow.position];
 
+        // Fill in field
         for (const block of this.tetrominoInPlay.blocks) {
             this.field[this.tetrominoInPlay.position[1] + block[1]][this.tetrominoInPlay.position[0] + block[0]] = this.tetrominoInPlay.color;
         }
 
+        // Update counters and field
         this.pieceCount++;
         pieceCount.innerHTML = this.pieceCount + (this.pieceCount === 1 ? ' piece placed' : ' pieces placed');
 
